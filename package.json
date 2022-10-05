@@ -1,0 +1,36 @@
+{
+  "name": "validate-steuernummer",
+  "description": "Best-effort validation of German Steuernummern",
+  "version": "1.0.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/getcouped/validate-steuernummer.git"
+  },
+  "bugs": {
+    "url": "https://github.com/getcouped/validate-steuernummer/issues"
+  },
+  "homepage": "https://github.com/getcouped/validate-steuernummer#readme",
+  "type": "module",
+  "keywords": [
+    "deutschland",
+    "german",
+    "germany",
+    "steuer",
+    "steuernummer",
+    "tax",
+    "taxes",
+    "validation"
+  ],
+  "author": "GetCouped Technologies GmbH",
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc && vite build",
+    "test": "vitest"
+  },
+  "devDependencies": {
+    "typescript": "^4.6.4",
+    "vite": "^3.1.0",
+    "vite-plugin-dts": "^1.6.4",
+    "vitest": "^0.23.4"
+  }
+}
