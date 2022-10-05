@@ -2,6 +2,19 @@
   "name": "validate-steuernummer",
   "description": "Best-effort validation of German Steuernummern",
   "version": "1.0.0",
+  "main": "./dist/validate-steuernummer.umd.cjs",
+  "module": "./dist/validate-steuernummer.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "require": "./dist/validate-steuernummer.umd.cjs",
+      "import": "./dist/validate-steuernummer.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist/*"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/getcouped/validate-steuernummer.git"
@@ -27,6 +40,7 @@
     "build": "tsc && vite build",
     "test": "vitest"
   },
+  "dependencies": {},
   "devDependencies": {
     "typescript": "^4.6.4",
     "vite": "^3.1.0",
