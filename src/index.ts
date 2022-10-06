@@ -85,7 +85,7 @@ const forbiddenBezirksnummer = ['000', '998', '999', '0000', '0998', '0999'];
 type Options = {
   bundesland?: ISO3166_2Codes;
   errorMessages?: Partial<ErrorMessages>;
-  strict?: boolean;
+  lax?: boolean;
 };
 
 /**
@@ -100,25 +100,25 @@ type Options = {
  *
  *  - The given string contains only digits, ' ', or '/'
  *  - The number of digits in the given string is between 10 and 13
- *  - If the given Steuernummer is of length >=12:
- *    - A valid prefix exists denoting the Bundesland that the Steuernummer
- *      belongs to
- *    - The Bundesland prefix matches the optionally given `bundesland` option
- *  - If `strict` mode is enabled, the issuing Bundesland can be inferred from
- *    the given Steuernummer, or is provided using the `bundesland` option.
- *  - If the Bundesland of the Steuernummer is known (either derived from a
- *    Steuernummer with length => 12, or provided by the caller):
- *    - The Bundesfinanzamtsnummer part of the Steuernummer references a known
- *      Bundesfinanzamt. The list to check against is based on the "GemFA 2.0"
- *      (GEMeinden und FinanzAemter 2.0) data, which lists 610 Finanzämter as of
- *      October 5th 2022.
- *    - The Bezirksnummer part of the Steuernummer is valid (checking
- *      Bundesland-specific constraints)
- *    - The Unterscheidungsnummer and Prüfziffer fulfill requirements specific
- *      to Nordrhein-Westfalen
- *    - The Prüfziffer is valid. In the case of a Steuernummer from Berlin,
- *      validation passes if the Prüfziffer matches that calculated either for
- *      Berlin-A _or_ Berlin-B scheme.
+ *  - The state (Bundesland) issuing the Steuernummer is known
+ *    - Either, because the Steuernummer contains a state prefix (i.e., is of
+ *      length >= 12)
+ *    - Or, because the `bundesland` option was used to deliberately name the
+ *      state (for example, when providing a Steuernummer using the common
+ *      Standardschema der Länder)
+ *  - The state information contained in the Steuernummer matches the
+ *    `bundesland` option, if both are given
+ *  - The Bundesfinanzamtsnummer part of the Steuernummer references a known
+ *    Bundesfinanzamt. The list to check against is based on the "GemFA 2.0"
+ *    (GEMeinden und FinanzAemter 2.0) data, which lists 610 Finanzämter as of
+ *    October 5th 2022.
+ *  - The Bezirksnummer part of the Steuernummer is valid (checking Bundesland-
+ *    specific constraints)
+ *  - The Unterscheidungsnummer and Prüfziffer fulfill requirements specific to
+ *    Nordrhein-Westfalen
+ *  - The Prüfziffer is valid. In the case of a Steuernummer from Berlin,
+ *    validation passes if the Prüfziffer matches that calculated either for the
+ *    Berlin-A _or_ the Berlin-B scheme.
  *
  * Cf. https://download.elster.de/download/schnittstellen/Pruefung_der_Steuer_und_Steueridentifikatsnummer.pdf
  *
@@ -159,11 +159,10 @@ export function validateSteuernummer(val: string, options?: Options) {
   // abort if no Bundesland can be determined - this is the poorest form of
   // validation:
   if (states.length === 0 && digits.length < 12) {
-    // error if
-    if (options?.strict) {
-      return errorMsgs.missingStateInformationError;
+    if (options?.lax) {
+      return;
     }
-    return;
+    return errorMsgs.missingStateInformationError;
   }
 
   // validate that a known state prefix was provided:
