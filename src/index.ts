@@ -137,59 +137,76 @@ export function validateSteuernummer(val: string, options?: Options) {
     return errorMsgs.tooLongError;
   }
 
-  if (digits.length === 13) {
-    // case: "Vereinheitlichtes Bundesschema zur elektronischen Übermittlung"
-    if (digits.charAt(4) !== '0') {
-      return errorMsgs.missingZeroError;
-    }
-  }
-
-  const laender =
+  // determine the possible Bundesländer that issued this Steuernummer:
+  const states =
     typeof options?.bundesland !== 'undefined'
       ? [options.bundesland]
-      : getBundeslaender(digits);
+      : getStates(digits);
 
-  if (digits.length === 12 || digits.length === 13) {
-    // unknown state prefix:
-    if (laender.length === 0) {
-      return errorMsgs.unknownStatePrefixError;
-    }
-    // mismatch in land named in options vs. in Steuernummer:
-    if (
-      typeof options?.bundesland === 'string' &&
-      !getBundeslaender(digits).includes(options.bundesland)
-    ) {
-      return errorMsgs.wrongStateError;
-    }
+  // abort if no Bundesland can be determined - this is the poorest form of
+  // validation:
+  // TODO: add option to prevent these cases?!
+  if (states.length === 0 && digits.length < 12) {
+    return;
   }
 
-  const bezirksnummer = getBezirksnummer(digits, laender);
+  // validate that a known state prefix was provided:
+  if (states.length === 0 && digits.length >= 12) {
+    return errorMsgs.unknownStatePrefixError;
+  }
 
-  // check set of explicitly forbidden Bezirksnummern:
+  // validate that a (possibly) given `bundesland` matches the one derivable
+  // from the Steuernummer:
+  if (
+    typeof options?.bundesland === 'string' &&
+    !getStates(digits).includes(options.bundesland)
+  ) {
+    return errorMsgs.wrongStateError;
+  }
+
+  // at this point, we know the bundesland of the Steuernummer - so we can
+  // obtain a "normalized" version, i.e., one following the "Vereinheitlichtes
+  // Bundesschema zur elektronischen Übermittlung" of length 13:
+  const normalizedDigits = getNormalizedDigits(digits, states);
+
+  // validate that a Steuernummer expressed in the "Vereinheitlichtes
+  // Bundesschema zur elektronischen Übermittlung" contains a `0` at the fifth
+  // position:
+  if (normalizedDigits.charAt(4) !== '0') {
+    return errorMsgs.missingZeroError;
+  }
+
+  // validate that the Steuernummer does not use an explicitly forbidden
+  // Bezirksnummer:
+  const bezirksnummer = getBezirksnummer(normalizedDigits);
   if (forbiddenBezirksnummer.includes(bezirksnummer)) {
     return errorMsgs.bezirksnummerError;
   }
 
-  // check if constraints by bayerischen Programmierverbundes
+  // validate that the Bezirksnummer does not violate constraints for states of
+  // the bayerischen Programmierverbundes:
   const isBayerischerProgrammierVerbund =
-    getIsBayerischerProgrammierverbund(laender);
+    getIsBayerischerProgrammierverbund(states);
   if (isBayerischerProgrammierVerbund && parseInt(bezirksnummer) < 100) {
     return errorMsgs.bezirksnummerError;
   }
 
-  // check for NW that "Kombination aus Unterscheidungsnummer und Prüfziffer (UUUP) stets größer als 0009":
+  // validate that the "Kombination aus Unterscheidungsnummer und Prüfziffer
+  // (UUUP) stets größer als 0009" for a Steuernummer from Nordrhein-Westfalen:
   if (
-    laender.includes('DE-NW') &&
-    parseInt(digits.substring(digits.length - 4)) < 9
+    states.includes('DE-NW') &&
+    parseInt(normalizedDigits.substring(normalizedDigits.length - 4)) < 9
   ) {
     return errorMsgs.nwInternalConsistencyError;
   }
 
-  // check Prüfziffer:
-  const pruefziffern = getPruefziffern(digits, laender);
+  // validate the Prüfziffer:
+  const pruefziffern = getPruefziffern(normalizedDigits, states);
   if (
     pruefziffern.length > 0 &&
-    !pruefziffern.includes(parseInt(digits.charAt(digits.length - 1)))
+    !pruefziffern.includes(
+      parseInt(normalizedDigits.charAt(normalizedDigits.length - 1))
+    )
   ) {
     return errorMsgs.pruefzifferError;
   }
@@ -198,15 +215,39 @@ export function validateSteuernummer(val: string, options?: Options) {
 }
 
 /**
- * Returns the ISO 3166-2 codes of the Bundesländer identified by the first one
- * or two digits of the given steuernummer.
+ * Returns a normalized version of the given Steuernummer, i.e., one following
+ * the "Vereinheitlichtes Bundesschema zur elektronischen Übermittlung". It's
+ * length will be 13. Requires information about the state issuing the
+ * Steuernummer being provided, either as a state prefix in the given `digits`,
+ * or via an entry in the given `states`.
+ */
+function getNormalizedDigits(digits: string, states: ISO3166_2Codes[]) {
+  if (digits.length < 12 && states.length === 0) {
+    throw new Error(
+      `Cannot call getNormalizedDigits without information about the state issuing the Steuernummer`
+    );
+  }
+  const digitsWithPrefix =
+    digits.length === 10 || digits.length === 11
+      ? getStatesPrefix(states) + digits
+      : digits;
+  const normalizedDigits =
+    digitsWithPrefix.length === 13
+      ? digitsWithPrefix
+      : `${digitsWithPrefix.substring(0, 4)}0${digits.substring(4, 12)}`;
+  return normalizedDigits;
+}
+
+/**
+ * Returns the ISO 3166-2 codes of the states (Bundesländer) identified by the
+ * first one or two digits of the given Steuernummer.
  *
  * Returns an empty array if the Steuernummer cannot be deduced.
  *
  * Returns possibly multiple codes, as the relation between digit prefix and
  * Länder is not one-to-one.
  */
-function getBundeslaender(digits: string): ISO3166_2Codes[] {
+function getStates(digits: string): ISO3166_2Codes[] {
   if (digits.length !== 12 && digits.length !== 13) {
     return [];
   }
@@ -242,113 +283,107 @@ function getBundeslaender(digits: string): ISO3166_2Codes[] {
 
 /**
  * Returns the numeric prefix used in federal Steuernummern to identify a
- * Bundesland for the given `laender`.
+ * states (Bundesland) for the given `states`.
  */
-function getLaenderPrefix(laender: ISO3166_2Codes[]) {
-  if (laender.includes('DE-BW')) {
+function getStatesPrefix(states: ISO3166_2Codes[]) {
+  if (states.includes('DE-BW')) {
     return 28;
-  } else if (laender.includes('DE-BY')) {
+  } else if (states.includes('DE-BY')) {
     return 9;
-  } else if (laender.includes('DE-BE')) {
+  } else if (states.includes('DE-BE')) {
     return 11;
   } else if (
-    laender.includes('DE-BB') ||
-    laender.includes('DE-SN') ||
-    laender.includes('DE-ST')
+    states.includes('DE-BB') ||
+    states.includes('DE-SN') ||
+    states.includes('DE-ST')
   ) {
     return 3;
-  } else if (laender.includes('DE-HB')) {
+  } else if (states.includes('DE-HB')) {
     return 24;
-  } else if (laender.includes('DE-HH')) {
+  } else if (states.includes('DE-HH')) {
     return 22;
-  } else if (laender.includes('DE-HE')) {
+  } else if (states.includes('DE-HE')) {
     return 26;
-  } else if (laender.includes('DE-MV') || laender.includes('DE-TH')) {
+  } else if (states.includes('DE-MV') || states.includes('DE-TH')) {
     return 4;
-  } else if (laender.includes('DE-NI')) {
+  } else if (states.includes('DE-NI')) {
     return 23;
-  } else if (laender.includes('DE-NW')) {
+  } else if (states.includes('DE-NW')) {
     return 5;
-  } else if (laender.includes('DE-RP')) {
+  } else if (states.includes('DE-RP')) {
     return 27;
-  } else if (laender.includes('DE-SL')) {
+  } else if (states.includes('DE-SL')) {
     return 1;
-  } else if (laender.includes('DE-SH')) {
+  } else if (states.includes('DE-SH')) {
     return 21;
   }
-  throw new Error('Invalid laender provided to getLaenderPrefix');
+  throw new Error('Invalid states provided to getLaenderPrefix');
 }
 
 /**
- * Returns `true`, if any of the given `laender` entries is one belonging to the
+ * Returns `true`, if any of the given `states` entries is one belonging to the
  * "bayerischer Programmierverband".
  */
-function getIsBayerischerProgrammierverbund(laender: ISO3166_2Codes[]) {
+function getIsBayerischerProgrammierverbund(states: ISO3166_2Codes[]) {
   return (
-    laender.includes('DE-BY') ||
-    laender.includes('DE-BB') ||
-    laender.includes('DE-MV') ||
-    laender.includes('DE-SL') ||
-    laender.includes('DE-SN') ||
-    laender.includes('DE-ST') ||
-    laender.includes('DE-TH')
+    states.includes('DE-BY') ||
+    states.includes('DE-BB') ||
+    states.includes('DE-MV') ||
+    states.includes('DE-SL') ||
+    states.includes('DE-SN') ||
+    states.includes('DE-ST') ||
+    states.includes('DE-TH')
   );
 }
 
 /**
- * Returns the Bezirksnummer part of the given `digits` (string of digits with
- * length between 10 and 13).
+ * Returns the Bezirksnummer part of the given `normalizedDigits`.
+ * The Bezirksnummer is only 4 digits long, if the state issuing the
+ * Steuernummer is Nordrhein-Westfalen.
  */
-function getBezirksnummer(digits: string, laender: ISO3166_2Codes[]) {
-  return digits.substring(
-    digits.length - 8,
-    digits.length - 8 + (laender.includes('DE-NW') ? 4 : 3)
+function getBezirksnummer(normalizedDigits: string) {
+  return normalizedDigits.substring(
+    normalizedDigits.length - 8,
+    normalizedDigits.length - 8 + (normalizedDigits.startsWith('5') ? 4 : 3)
   );
 }
 
 /**
- * Returns an array of Prüfziffern for the given `digits` and `laender`.
- *
- * The array will be empty if the given information does not suffice to
- * determine a Prüfziffer (e.g., if `lander` is empty and no Bundesland can
- * be inferred from the given `digits`).
+ * Returns an array of Prüfziffern for the given `normalizedDigits` and
+ * `states`.
  *
  * The array will contain two Prüfziffern in case of the Bundesland being
  * 'DE-BE', as Berlin uses two different mechanisms to determine the Prüfziffer.
  * Returning both deliberately trades off precision for reduced complexity and
  * fewer inputs required for this function.
  *
- * Note that `laender` possibly contains multiple entries (e.g., when deduced
+ * Note that `states` possibly contains multiple entries (e.g., when deduced
  * from a Steuernummer starting with `3`: `['DE-BB', 'DE-SN', 'DE-ST']`). This,
  * however, is not an issue as in all such cases, the calculation of the
- * Prüfziffer is exactly the same between these laender (incl. w.r.t. the
- * factors used in the calculations).
+ * Prüfziffer is exactly the same between these states (incl. w.r.t. the
+ * calculation method and factors used in the calculation).
  */
-function getPruefziffern(digits: string, laender: ISO3166_2Codes[]): number[] {
+function getPruefziffern(
+  normalizedDigits: string,
+  states: ISO3166_2Codes[]
+): number[] {
   // w.o. knowing the Bundesland, we cannot determine the Prüfziffer:
-  if (laender.length === 0) {
-    return [];
+  if (normalizedDigits.length !== 13 || states.length === 0) {
+    console.log({ normalizedDigits, states });
+    throw new Error(
+      `Cannot call getPruefziffern with a non-normalized Steuernummer or without providing states`
+    );
   }
 
-  // create version incl. prefix, length is 12:
-  const digitsWithPrefix =
-    digits.length === 10 || digits.length === 11
-      ? getLaenderPrefix(laender) + digits
-      : digits;
-  const normalizedDigits =
-    digitsWithPrefix.length === 13
-      ? digitsWithPrefix
-      : `${digitsWithPrefix.substring(0, 4)}0${digits.substring(4, 12)}`;
-
-  if (laender.includes('DE-RP')) {
+  if (states.includes('DE-RP')) {
     return [getPruefzifferModified11er(normalizedDigits)];
   } else if (
-    laender.includes('DE-BW') ||
-    laender.includes('DE-HE') ||
-    laender.includes('DE-SH')
+    states.includes('DE-BW') ||
+    states.includes('DE-HE') ||
+    states.includes('DE-SH')
   ) {
     return [getPruefziffer2er(normalizedDigits)];
-  } else if (laender.includes('DE-BE')) {
+  } else if (states.includes('DE-BE')) {
     return [
       getPruefziffer11er(normalizedDigits, 'DE-BE-A'),
       getPruefziffer11er(normalizedDigits, 'DE-BE-B'),
@@ -357,7 +392,7 @@ function getPruefziffern(digits: string, laender: ISO3166_2Codes[]): number[] {
     return [
       getPruefziffer11er(
         normalizedDigits,
-        laender[0] as ISO3166_2Codes_11erVerfahren
+        states[0] as ISO3166_2Codes_11erVerfahren
       ),
     ];
   }
