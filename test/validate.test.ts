@@ -76,6 +76,15 @@ describe('validate a Steuernummer', () => {
     );
   });
 
+  it('error on missing state information in strict mode', () => {
+    expect(validateSteuernummer('9381508152', { strict: true })).toEqual(
+      defaultErrors.missingStateInformationError
+    );
+    expect(validateSteuernummer('12345678901', { strict: true })).toEqual(
+      defaultErrors.missingStateInformationError
+    );
+  });
+
   it('no error on valid Steuernummer', () => {
     expect(validateSteuernummer('9381508152')).toBeUndefined();
     expect(validateSteuernummer('918181508155')).toBeUndefined();

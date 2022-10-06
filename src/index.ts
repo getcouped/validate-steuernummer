@@ -17,6 +17,8 @@ export const defaultErrors = {
   pruefzifferError: 'Die Prüfziffer der Steuernummer stimmt nicht',
   nwInternalConsistencyError:
     'Die interne Konsistenz der Steuernummer ist nicht gegeben',
+  missingStateInformationError:
+    'Validierung fehlgeschlagen, weil unzureichende Informationen über das zugehörige Bundesland vorliegen',
 };
 
 type ErrorMessages = typeof defaultErrors;
@@ -83,6 +85,7 @@ const forbiddenBezirksnummer = ['000', '998', '999', '0000', '0998', '0999'];
 type Options = {
   bundesland?: ISO3166_2Codes;
   errorMessages?: Partial<ErrorMessages>;
+  strict?: boolean;
 };
 
 /**
@@ -101,6 +104,8 @@ type Options = {
  *    - A valid prefix exists denoting the Bundesland that the Steuernummer
  *      belongs to
  *    - The Bundesland prefix matches the optionally given `bundesland` option
+ *  - If `strict` mode is enabled, the issuing Bundesland can be inferred from
+ *    the given Steuernummer, or is provided using the `bundesland` option.
  *  - If the Bundesland of the Steuernummer is known (either derived from a
  *    Steuernummer with length => 12, or provided by the caller):
  *    - The Bundesfinanzamtsnummer part of the Steuernummer references a known
@@ -153,8 +158,11 @@ export function validateSteuernummer(val: string, options?: Options) {
 
   // abort if no Bundesland can be determined - this is the poorest form of
   // validation:
-  // TODO: add option to prevent these cases?!
   if (states.length === 0 && digits.length < 12) {
+    // error if
+    if (options?.strict) {
+      return errorMsgs.missingStateInformationError;
+    }
     return;
   }
 

@@ -35,6 +35,7 @@ Depending on the available information, this library checks that:
 * _**If**_ the given Steuernummer is of length >=12:
   * A valid prefix exists denoting the Bundesland that the Steuernummer belongs to
   * The Bundesland prefix matches the optionally given `bundesland` option
+* _**If**_ the `strict` [option](#options) is enabled, the Bundesland issuing the Steuernummer can either be inferred (the Steuernummer is of length >= 12), _or_ is provided via the `bundesland` option
 * _**If**_ the Bundesland of the Steuernummer is known (either derived from a Steuernummer with length => 12, or provided in the [options](#options)):
   * The Bundesfinanzamtsnummer part of the Steuernummer references a known Bundesfinanzamt. The list to check against is based on the ["GemFA 2.0" (GEMeinden und FinanzAemter 2.0) data](https://www.bzst.de/DE/Service/Behoerdenwegweiser/Finanzamtsuche/finanzamtsuche.html), which lists 610 Finanzämter as of October 5th 2022.
   * The Bezirksnummer part of the Steuernummer is valid (checking Bundesland-specific constraints)
@@ -55,9 +56,10 @@ For details about these and additional validation requirements of a Steuernummer
         'Please only use digits, spaces, dashes, underscores, or slashes'
     }});
     ```
+* `strict`: A boolean flag, that is `true`, will cause an error if the Bundesland issuing a Steuernummer cannot be determined (i.e., if the )
 
 ## License
 MIT
 
 
-[^1]: Why only _best-effort_? Because this library only takes into account information it has about a Steuernummer. If, for example, the Bundesland issuing a Steuernummer cannot be deduced from the provided Steuernummer (possible when the number is expressed using only the "Standardschema der Länder") and is not otherwise provided, Bundesland-specific features like a correct Prüfziffer are not validated. See the [what is validated](#what-is-validated) section.
+[^1]: Why only _best-effort_? Because, by default, this library only takes into account information it has about a Steuernummer. If, for example, the Bundesland issuing a Steuernummer cannot be deduced from the provided Steuernummer (possible when the number is expressed using only the "Standardschema der Länder") and is not otherwise provided, Bundesland-specific features like a correct Prüfziffer are not validated. See the [what is validated](#what-is-validated) section. Use the `strict` [option](#options) to ensure all validations are enforced.
