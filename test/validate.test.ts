@@ -35,10 +35,10 @@ describe('validate a Steuernummer', () => {
   });
 
   it('error on missing 0 in 13-digit Steuernummer', () => {
-    expect(validateSteuernummer('123 416 789 105 1')).toEqual(
+    expect(validateSteuernummer('1123 4 17891051')).toEqual(
       defaultErrors.missingZeroError
     );
-    expect(validateSteuernummer('123 / 406 / 789 / 105 / 7')).toBeUndefined();
+    expect(validateSteuernummer('1123 0 17891051')).toBeUndefined();
   });
 
   it('error on invalid state prefix', () => {

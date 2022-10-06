@@ -1,3 +1,5 @@
+import { FinanzamtNummern } from './finanzamtnummern';
+
 export const defaultErrors = {
   allowedCharactersError:
     'Bitte nur Ziffern, "-", "_", "/" oder Leerzeichen verwenden',
@@ -7,6 +9,8 @@ export const defaultErrors = {
     'Steuernummern zur elektronischen Übermittlung müssen an 5. Stelle eine "0" aufweisen',
   unknownStatePrefixError:
     'Die Steuernummer kann keinem Bundesland zugewiesen werden',
+  unknownFinanzamtError:
+    'Die Steuernummer kann keinem Finanzamt zugewiesen werden',
   wrongStateError:
     'Die Steuernummer entspricht nicht dem angegebenen Bundesland',
   bezirksnummerError: 'Die Steuernummer enthält eine invalide Bezirksnummer',
@@ -99,6 +103,10 @@ type Options = {
  *    - The Bundesland prefix matches the optionally given `bundesland` option
  *  - If the Bundesland of the Steuernummer is known (either derived from a
  *    Steuernummer with length => 12, or provided by the caller):
+ *    - The Bundesfinanzamtsnummer part of the Steuernummer references a known
+ *      Bundesfinanzamt. The list to check against is based on the "GemFA 2.0"
+ *      (GEMeinden und FinanzAemter 2.0) data, which lists 610 Finanzämter as of
+ *      October 5th 2022.
  *    - The Bezirksnummer part of the Steuernummer is valid (checking
  *      Bundesland-specific constraints)
  *    - The Unterscheidungsnummer and Prüfziffer fulfill requirements specific
@@ -174,6 +182,12 @@ export function validateSteuernummer(val: string, options?: Options) {
   // position:
   if (normalizedDigits.charAt(4) !== '0') {
     return errorMsgs.missingZeroError;
+  }
+
+  // validate that the "Bundesfinanzamtsnummer" (first 4 digits of normalized
+  // Steuernummer) reference one of the known Finanzämter in Germany:
+  if (!FinanzamtNummern.has(normalizedDigits.substring(0, 4))) {
+    return errorMsgs.unknownFinanzamtError;
   }
 
   // validate that the Steuernummer does not use an explicitly forbidden

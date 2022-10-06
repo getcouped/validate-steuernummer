@@ -36,6 +36,7 @@ Depending on the available information, this library checks that:
   * A valid prefix exists denoting the Bundesland that the Steuernummer belongs to
   * The Bundesland prefix matches the optionally given `bundesland` option
 * _**If**_ the Bundesland of the Steuernummer is known (either derived from a Steuernummer with length => 12, or provided in the [options](#options)):
+  * The Bundesfinanzamtsnummer part of the Steuernummer references a known Bundesfinanzamt. The list to check against is based on the ["GemFA 2.0" (GEMeinden und FinanzAemter 2.0) data](https://www.bzst.de/DE/Service/Behoerdenwegweiser/Finanzamtsuche/finanzamtsuche.html), which lists 610 Finanzämter as of October 5th 2022.
   * The Bezirksnummer part of the Steuernummer is valid (checking Bundesland-specific constraints)
   * The Unterscheidungsnummer and Prüfziffer fulfill requirements specific to Nordrhein-Westfalen
   * The Prüfziffer is valid. Relies on the "11er Verfahren", "2er Verfahren", or "Modifiziertes 11er Verfahren" depending on the Bundesland. In the case of a Steuernummer from Berlin, validation passes if the Prüfziffer matches that calculated either for Berlin-A _or_ Berlin-B scheme. Cf. [section 7.2 of this document](https://download.elster.de/download/schnittstellen/Pruefung_der_Steuer_und_Steueridentifikatsnummer.pdf).
@@ -59,7 +60,4 @@ For details about these and additional validation requirements of a Steuernummer
 MIT
 
 
-[^1]: Why only _best-effort_?
-    * This library only takes into account information it has about a Steuernummer. If, for example, the Bundesland issuing a Steuernummer cannot be deduced from the provided Steuernummer (possible when the number is expressed using only the "Standardschema der Länder") and is not otherwise provided, Bundesland-specific features like a correct Prüfziffer are not validated. See the [what is validated](#what-is-validated) section.
-    * This library refrains from validating information which is likely to change, like asserting that Steuernummer references an existing Finanzamt.
-
+[^1]: Why only _best-effort_? Because this library only takes into account information it has about a Steuernummer. If, for example, the Bundesland issuing a Steuernummer cannot be deduced from the provided Steuernummer (possible when the number is expressed using only the "Standardschema der Länder") and is not otherwise provided, Bundesland-specific features like a correct Prüfziffer are not validated. See the [what is validated](#what-is-validated) section.
