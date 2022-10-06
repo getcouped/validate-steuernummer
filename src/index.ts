@@ -173,9 +173,11 @@ export function validateSteuernummer(val: string, options?: Options) {
 
   // validate that a (possibly) given `bundesland` matches the one derivable
   // from the Steuernummer:
+  const derivedStates = getStates(digits);
   if (
     typeof options?.bundesland === 'string' &&
-    !getStates(digits).includes(options.bundesland)
+    derivedStates.length > 0 &&
+    !derivedStates.includes(options.bundesland)
   ) {
     return errorMsgs.wrongStateError;
   }
@@ -244,20 +246,26 @@ export function validateSteuernummer(val: string, options?: Options) {
  * or via an entry in the given `states`.
  */
 function getNormalizedDigits(digits: string, states: ISO3166_2Codes[]) {
+  // nothing to do for already normalized Steuernummern:
+  if (digits.length === 13) {
+    return digits;
+  }
+
+  // only add a `0` at the 5th place:
+  if (digits.length === 12) {
+    return `${digits.substring(0, 4)}0${digits.substring(4, 12)}`;
+  }
+
+  // error if normalization is impossible with the given information:
   if (digits.length < 12 && states.length === 0) {
     throw new Error(
       `Cannot call getNormalizedDigits without information about the state issuing the Steuernummer`
     );
   }
-  const digitsWithPrefix =
-    digits.length === 10 || digits.length === 11
-      ? getStatesPrefix(states) + digits
-      : digits;
-  const normalizedDigits =
-    digitsWithPrefix.length === 13
-      ? digitsWithPrefix
-      : `${digitsWithPrefix.substring(0, 4)}0${digits.substring(4, 12)}`;
-  return normalizedDigits;
+
+  // determine state prefix and add `0` at 5th position:
+  const digitsWPrefix = getStatesPrefix(states) + digits;
+  return `${digitsWPrefix.substring(0, 4)}0${digitsWPrefix.substring(4, 12)}`;
 }
 
 /**
@@ -270,7 +278,7 @@ function getNormalizedDigits(digits: string, states: ISO3166_2Codes[]) {
  * Länder is not one-to-one.
  */
 function getStates(digits: string): ISO3166_2Codes[] {
-  if (digits.length !== 12 && digits.length !== 13) {
+  if (digits.length < 12) {
     return [];
   }
   if (digits.startsWith('9')) {
@@ -391,7 +399,6 @@ function getPruefziffern(
 ): number[] {
   // w.o. knowing the Bundesland, we cannot determine the Prüfziffer:
   if (normalizedDigits.length !== 13 || states.length === 0) {
-    console.log({ normalizedDigits, states });
     throw new Error(
       `Cannot call getPruefziffern with a non-normalized Steuernummer or without providing states`
     );

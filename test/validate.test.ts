@@ -83,6 +83,11 @@ describe('validate a Steuernummer', () => {
     expect(validateSteuernummer('12345678901', { strict: true })).toEqual(
       defaultErrors.missingStateInformationError
     );
+
+    // passing the bundesland in strict mode works:
+    expect(
+      validateSteuernummer('3756951296', { strict: true, bundesland: 'DE-BE' })
+    ).toBeUndefined();
   });
 
   it('no error on valid Steuernummer', () => {
