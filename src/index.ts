@@ -98,7 +98,7 @@ type Options = {
  *
  * This is what's being validated:
  *
- *  - The given string contains only digits, ' ', '-', '_', or '/'
+ *  - The given string contains only digits, ' ', or '/'
  *  - The number of digits in the given string is between 10 and 13
  *  - If the given Steuernummer is of length >=12:
  *    - A valid prefix exists denoting the Bundesland that the Steuernummer
@@ -134,7 +134,7 @@ export function validateSteuernummer(val: string, options?: Options) {
   };
 
   // check whether only allowed characters are used:
-  if (!/^[0-9-_\/\s]*$/gm.test(val)) {
+  if (!/^[0-9\/\s]*$/gm.test(val)) {
     return errorMsgs.allowedCharactersError;
   }
 

@@ -8,8 +8,8 @@ import { validateSteuernummer } from 'validate-steuernummer'
 const err1 = validateSteuernummer('9/198/0/815/0815/2');
 // err1 is `undefined`, because this is a valid Steuernummer from Bavaria
 
-const err2 = validateSteuernummer('24 75 0 815 0815 4');
-// err2 is `Die Prüfziffer der Steuernummer stimmt nicht`, because 4 is not a
+const err2 = validateSteuernummer('24 75 815 08154');
+// err2 is `Die Prüfziffer der Steuernummer stimmt nicht`, because 4 is not the
 // valid Prüfziffer for this Steuernummer from Bremen
 
 // Optionally provide the Bundesland that issued the Steuernummer:
@@ -30,7 +30,7 @@ The function returns `undefined` if it deems the given `value` to be a valid Ste
 ## What is validated
 Depending on the available information, this library checks that:
 
-* The given string contains only digits, `" "` (spaces), `"-"`, `"_"`, or `"/"`
+* The given string contains only digits, spaces (`" "`), or slashes (`"/"`)
 * The number of digits in the given string is between 10 and 13
 * _**If**_ the given Steuernummer is of length >=12:
   * A valid prefix exists denoting the Bundesland that the Steuernummer belongs to
