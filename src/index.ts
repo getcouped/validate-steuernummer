@@ -23,7 +23,7 @@ export const defaultErrors = {
 
 type ErrorMessages = typeof defaultErrors;
 
-type ISO3166_2Codes =
+export type ISO3166_2Codes =
   | 'DE-BW'
   | 'DE-BY'
   | 'DE-BE'
