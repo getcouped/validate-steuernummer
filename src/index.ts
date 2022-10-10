@@ -49,6 +49,7 @@ type ISO3166_2Codes_11erVerfahren =
   | 'DE-BE-B'
   | 'DE-BB'
   | 'DE-HB'
+  | 'DE-HH'
   | 'DE-MV'
   | 'DE-NI'
   | 'DE-NW'
@@ -63,6 +64,7 @@ const factors11erVerfahren: Record<ISO3166_2Codes_11erVerfahren, number[]> = {
   'DE-BE-B': [0, 0, 2, 9, 0, 8, 7, 6, 5, 4, 3, 2],
   'DE-BB': [0, 5, 4, 3, 0, 2, 7, 6, 5, 4, 3, 2],
   'DE-HB': [0, 0, 4, 3, 0, 2, 7, 6, 5, 4, 3, 2],
+  'DE-HH': [0, 0, 4, 3, 0, 2, 7, 6, 5, 4, 3, 2],
   'DE-MV': [0, 5, 4, 3, 0, 2, 7, 6, 5, 4, 3, 2],
   'DE-NI': [0, 0, 2, 9, 0, 8, 7, 6, 5, 4, 3, 2],
   'DE-NW': [0, 3, 2, 1, 0, 7, 6, 5, 4, 3, 2, 1],

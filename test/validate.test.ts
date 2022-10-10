@@ -106,5 +106,8 @@ describe('validate a Steuernummer', () => {
     ).toBeUndefined();
     expect(validateSteuernummer('9 / 181 / 815 / 0815 / 5')).toBeUndefined();
     expect(validateSteuernummer('5 133 0 8150 815 9')).toBeUndefined();
+    expect(
+      validateSteuernummer('45/748/01430', { bundesland: 'DE-HH' })
+    ).toBeUndefined();
   });
 });
