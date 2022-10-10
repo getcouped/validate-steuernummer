@@ -5,6 +5,8 @@ export const defaultErrors = {
     'Bitte nur Ziffern, "-", "_", "/" oder Leerzeichen verwenden',
   tooShortError: 'Eine Steuernummer muss mindestens 10 Ziffern enthalten',
   tooLongError: 'Eine Steuernummer darf maximal 13 Ziffern enthalten',
+  normalizationError:
+    'Die Steuernummer konnte mit dem angegebenen Bundesland nicht normalisiert werden',
   missingZeroError:
     'Steuernummern zur elektronischen Übermittlung müssen an 5. Stelle eine "0" aufweisen',
   unknownStatePrefixError:
@@ -185,6 +187,12 @@ export function validateSteuernummer(val: string, options?: Options) {
   // obtain a "normalized" version, i.e., one following the "Vereinheitlichtes
   // Bundesschema zur elektronischen Übermittlung" of length 13:
   const normalizedDigits = getNormalizedDigits(digits, states);
+
+  // if the resulting normalized Steuernummer is not of length 13, something
+  // went wrong. For example, a wrong state may have been provided:
+  if (normalizedDigits.length !== 13) {
+    return errorMsgs.normalizationError;
+  }
 
   // validate that a Steuernummer expressed in the "Vereinheitlichtes
   // Bundesschema zur elektronischen Übermittlung" contains a `0` at the fifth
