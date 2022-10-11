@@ -55,13 +55,6 @@ describe('validate a Steuernummer', () => {
     ).toBeUndefined();
   });
 
-  it('error if normalization does not with with the given state', () => {
-    // the resulting normalized Steuernummer would only have length 12:
-    expect(validateSteuernummer('1231231234', { bundesland: 'DE-NW' })).toEqual(
-      defaultErrors.normalizationError
-    );
-  });
-
   it('error on invalid state prefix', () => {
     expect(validateSteuernummer('253 406 789 105 1')).toEqual(
       defaultErrors.unknownStatePrefixError

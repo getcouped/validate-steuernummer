@@ -5,8 +5,8 @@ export const defaultErrors = {
     'Bitte nur Ziffern, "-", "_", "/" oder Leerzeichen verwenden',
   tooShortError: 'Eine Steuernummer muss mindestens 10 Ziffern enthalten',
   tooLongError: 'Eine Steuernummer darf maximal 13 Ziffern enthalten',
-  normalizationError:
-    'Die Steuernummer konnte mit dem angegebenen Bundesland nicht normalisiert werden',
+  wrongLengthForState: 'Die Steuernummer hat die falsche Länge',
+  parseError: 'Die Steuernummer konnte nicht geparsed werden',
   missingZeroError:
     'Steuernummern zur elektronischen Übermittlung müssen an 5. Stelle eine "0" aufweisen',
   unknownStatePrefixError:
@@ -188,13 +188,7 @@ export function validateSteuernummer(val: string, options?: Options) {
   // at this point, we know the bundesland of the Steuernummer - so we can
   // obtain a "normalized" version, i.e., one following the "Vereinheitlichtes
   // Bundesschema zur elektronischen Übermittlung" of length 13:
-  const normalizedDigits = getNormalizedDigits(digits, states);
-
-  // if the resulting normalized Steuernummer is not of length 13, something
-  // went wrong. For example, a wrong state may have been provided:
-  if (normalizedDigits.length !== 13) {
-    return errorMsgs.normalizationError;
-  }
+  const normalizedDigits = getNormalizedDigits(digits, states, errorMsgs);
 
   // validate that a Steuernummer expressed in the "Vereinheitlichtes
   // Bundesschema zur elektronischen Übermittlung" contains a `0` at the fifth
@@ -247,6 +241,28 @@ export function validateSteuernummer(val: string, options?: Options) {
   return undefined;
 }
 
+const statesWith10Digits = new Set<ISO3166_2Codes>([
+  'DE-BW',
+  'DE-BE',
+  'DE-HB',
+  'DE-HH',
+  'DE-NI',
+  'DE-RP',
+  'DE-SH',
+]);
+
+const statesWith11Digits = new Set<ISO3166_2Codes>([
+  'DE-BY',
+  'DE-BB',
+  'DE-HE',
+  'DE-MV',
+  'DE-NW',
+  'DE-SL',
+  'DE-SN',
+  'DE-ST',
+  'DE-TH',
+]);
+
 /**
  * Returns a normalized version of the given Steuernummer, i.e., one following
  * the "Vereinheitlichtes Bundesschema zur elektronischen Übermittlung". It's
@@ -254,7 +270,11 @@ export function validateSteuernummer(val: string, options?: Options) {
  * Steuernummer being provided, either as a state prefix in the given `digits`,
  * or via an entry in the given `states`.
  */
-function getNormalizedDigits(digits: string, states: ISO3166_2Codes[]) {
+function getNormalizedDigits(
+  digits: string,
+  states: ISO3166_2Codes[],
+  errors: ErrorMessages
+) {
   // nothing to do for already normalized Steuernummern:
   if (digits.length === 13) {
     return digits;
@@ -265,16 +285,54 @@ function getNormalizedDigits(digits: string, states: ISO3166_2Codes[]) {
     return `${digits.substring(0, 4)}0${digits.substring(4, 12)}`;
   }
 
-  // error if normalization is impossible with the given information:
-  if (digits.length < 12 && states.length === 0) {
-    throw new Error(
-      `Cannot call getNormalizedDigits without information about the state issuing the Steuernummer`
-    );
+  if (
+    digits.length !== 10 &&
+    states.every((state) => statesWith10Digits.has(state))
+  ) {
+    throw new Error(errors.wrongLengthForState);
   }
 
-  // determine state prefix and add `0` at 5th position:
-  const digitsWPrefix = getStatesPrefix(states) + digits;
-  return `${digitsWPrefix.substring(0, 4)}0${digitsWPrefix.substring(4, 12)}`;
+  if (
+    digits.length !== 11 &&
+    states.every((state) => statesWith11Digits.has(state))
+  ) {
+    throw new Error(errors.wrongLengthForState);
+  }
+
+  // Compilation based on https://github.com/kontist/normalize-steuernummer:
+  const { ff, fff, bbb, bbbb, uuu, uuuu, p } = parse(digits, states, errors);
+
+  switch (states[0]) {
+    case 'DE-BW':
+      return `28${ff}0${bbb}${uuuu}${p}`;
+    case 'DE-BY':
+      return `9${fff}0${bbb}${uuuu}${p}`;
+    case 'DE-BE':
+      return `11${ff}0${bbb}${uuuu}${p}`;
+    case 'DE-BB':
+    case 'DE-SN':
+    case 'DE-ST':
+      return `3${fff}0${bbb}${uuuu}${p}`;
+    case 'DE-HB':
+      return `24${ff}0${bbb}${uuuu}${p}`;
+    case 'DE-HH':
+      return `22${ff}0${bbb}${uuuu}${p}`;
+    case 'DE-HE':
+      return `26${ff}0${bbb}${uuuu}${p}`;
+    case 'DE-MV':
+    case 'DE-TH':
+      return `4${fff}0${bbb}${uuuu}${p}`;
+    case 'DE-NI':
+      return `23${ff}0${bbb}${uuuu}${p}`;
+    case 'DE-NW':
+      return `5${fff}0${bbbb}${uuu}${p}`;
+    case 'DE-RP':
+      return `27${ff}0${bbb}${uuuu}${p}`;
+    case 'DE-SL':
+      return `1${fff}0${bbb}${uuuu}${p}`;
+    case 'DE-SH':
+      return `21${ff}0${bbb}${uuuu}${p}`;
+  }
 }
 
 /**
@@ -318,45 +376,6 @@ function getStates(digits: string): ISO3166_2Codes[] {
     return ['DE-SL'];
   }
   return [];
-}
-
-/**
- * Returns the numeric prefix used in federal Steuernummern to identify a
- * states (Bundesland) for the given `states`.
- */
-function getStatesPrefix(states: ISO3166_2Codes[]) {
-  if (states.includes('DE-BW')) {
-    return 28;
-  } else if (states.includes('DE-BY')) {
-    return 9;
-  } else if (states.includes('DE-BE')) {
-    return 11;
-  } else if (
-    states.includes('DE-BB') ||
-    states.includes('DE-SN') ||
-    states.includes('DE-ST')
-  ) {
-    return 3;
-  } else if (states.includes('DE-HB')) {
-    return 24;
-  } else if (states.includes('DE-HH')) {
-    return 22;
-  } else if (states.includes('DE-HE')) {
-    return 26;
-  } else if (states.includes('DE-MV') || states.includes('DE-TH')) {
-    return 4;
-  } else if (states.includes('DE-NI')) {
-    return 23;
-  } else if (states.includes('DE-NW')) {
-    return 5;
-  } else if (states.includes('DE-RP')) {
-    return 27;
-  } else if (states.includes('DE-SL')) {
-    return 1;
-  } else if (states.includes('DE-SH')) {
-    return 21;
-  }
-  throw new Error('Invalid states provided to getLaenderPrefix');
 }
 
 /**
@@ -515,4 +534,70 @@ function sumDigits(num: number): number {
     num = Math.floor(num / 10);
   }
   return sum;
+}
+
+/**
+ * Parses the given `digits` (with length 10 or 11) depending on the given
+ * `states`.
+ *
+ * Based on https://github.com/kontist/normalize-steuernummer
+ */
+function parse(
+  digits: string,
+  states: ISO3166_2Codes[],
+  errors: ErrorMessages
+) {
+  if (
+    states.includes('DE-BW') ||
+    states.includes('DE-BE') ||
+    states.includes('DE-HB') ||
+    states.includes('DE-HH') ||
+    states.includes('DE-NI') ||
+    states.includes('DE-RP') ||
+    states.includes('DE-SH')
+  ) {
+    // Format: FF/BBB/UUUUP
+    const matches = digits.match(
+      /(?<ff>\d{2})(?<bbb>\d{3})(?<uuuu>\d{4})(?<p>\d{1})/
+    );
+    if (!matches || !matches.groups) {
+      throw new Error(errors.parseError);
+    }
+    return matches.groups;
+  } else if (
+    states.includes('DE-BY') ||
+    states.includes('DE-BB') ||
+    states.includes('DE-MV') ||
+    states.includes('DE-SL') ||
+    states.includes('DE-SN') ||
+    states.includes('DE-ST') ||
+    states.includes('DE-TH')
+  ) {
+    // Format: FFF/BBB/UUUUP.
+    const matches = digits.match(
+      /(?<fff>\d{3})(?<bbb>\d{3})(?<uuuu>\d{4})(?<p>\d{1})/
+    );
+    if (!matches || !matches.groups) {
+      throw new Error(errors.parseError);
+    }
+    return matches.groups;
+  } else if (states.includes('DE-HE')) {
+    // Format: 0FF/BBB/UUUUP.
+    const matches = digits.match(
+      /0(?<ff>\d{2})(?<bbb>\d{3})(?<uuuu>\d{4})(?<p>\d{1})/
+    );
+    if (!matches || !matches.groups) {
+      throw new Error(errors.parseError);
+    }
+    return matches.groups;
+  } else if (states.includes('DE-NW')) {
+    const matches = digits.match(
+      /(?<fff>\d{3})(?<bbbb>\d{4})(?<uuu>\d{3})(?<p>\d{1})/
+    );
+    if (!matches || !matches.groups) {
+      throw new Error(errors.parseError);
+    }
+    return matches.groups;
+  }
+  throw new Error(errors.parseError);
 }
