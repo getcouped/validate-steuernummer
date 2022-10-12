@@ -20,7 +20,7 @@ export const defaultErrors = {
   nwInternalConsistencyError:
     'Die interne Konsistenz der Steuernummer ist nicht gegeben',
   missingStateInformationError:
-    'Validierung fehlgeschlagen, weil unzureichende Informationen über das zugehörige Bundesland vorliegen',
+    'Unzureichende Informationen über das zugehörige Bundesland',
 };
 
 type ErrorMessages = typeof defaultErrors;
@@ -89,8 +89,9 @@ const forbiddenBezirksnummer = ['000', '998', '999', '0000', '0998', '0999'];
 type Options = {
   bundesland?: ISO3166_2Codes;
   errorMessages?: Partial<ErrorMessages>;
-  lax?: boolean;
 };
+
+type OptionsWithErrors = Options & { errorMessages: ErrorMessages };
 
 /**
  * Returns `undefined`, if the given `val` is a valid German Steuernummer. If
@@ -129,86 +130,40 @@ type Options = {
  * Using the second options argument, all / individual error messages (default
  * to German) can be overwritten.
  */
-export function validateSteuernummer(val: string, options?: Options) {
+export function validateSteuernummer(value: string, options?: Options) {
   try {
-    const errorMsgs = {
+    const errorMessages = {
       ...defaultErrors,
       ...(typeof options?.errorMessages === 'object'
         ? options.errorMessages
         : {}),
     };
 
-    // check whether only allowed characters are used:
-    if (!/^[0-9\/\s]*$/gm.test(val)) {
-      return errorMsgs.allowedCharactersError;
-    }
-
-    // extract digits:
-    const digitMatches = val.match(/[0-9]/g);
-    const digits = digitMatches?.join('') || '';
-
-    // validate length:
-    if (digits.length < 10) {
-      return errorMsgs.tooShortError;
-    }
-    if (digits.length > 13) {
-      return errorMsgs.tooLongError;
-    }
-
-    // determine the possible Bundesländer that issued this Steuernummer:
-    const states =
-      typeof options?.bundesland !== 'undefined'
-        ? [options.bundesland]
-        : getStates(digits);
-
-    // abort if no Bundesland can be determined - this is the poorest form of
-    // validation:
-    if (states.length === 0 && digits.length < 12) {
-      if (options?.lax) {
-        return;
-      }
-      return errorMsgs.missingStateInformationError;
-    }
-
-    // validate that a known state prefix was provided:
-    if (states.length === 0 && digits.length >= 12) {
-      return errorMsgs.unknownStatePrefixError;
-    }
-
-    // validate that a (possibly) given `bundesland` matches the one derivable
-    // from the Steuernummer:
-    const derivedStates = getStates(digits);
-    if (
-      typeof options?.bundesland === 'string' &&
-      derivedStates.length > 0 &&
-      !derivedStates.includes(options.bundesland)
-    ) {
-      return errorMsgs.wrongStateError;
-    }
-
     // at this point, we know the bundesland of the Steuernummer - so we can
     // obtain a "normalized" version, i.e., one following the "Vereinheitlichtes
     // Bundesschema zur elektronischen Übermittlung" of length 13:
-    const normalizedDigits = getNormalizedDigits(digits, states, errorMsgs);
-
-    // validate that a Steuernummer expressed in the "Vereinheitlichtes
-    // Bundesschema zur elektronischen Übermittlung" contains a `0` at the fifth
-    // position:
-    if (normalizedDigits.charAt(4) !== '0') {
-      return errorMsgs.missingZeroError;
-    }
+    const {
+      bundesfinanzamtnummer,
+      bezirksnummer,
+      states,
+      unterscheidungsnummer,
+      pruefziffer,
+      normalizedSteuernummer,
+    } = parseSteuernummer(value, {
+      ...options,
+      errorMessages,
+    });
 
     // validate that the "Bundesfinanzamtsnummer" (first 4 digits of normalized
     // Steuernummer) reference one of the known Finanzämter in Germany:
-    if (!FinanzamtNummern.has(normalizedDigits.substring(0, 4))) {
-      return errorMsgs.unknownFinanzamtError;
+    if (!FinanzamtNummern.has(bundesfinanzamtnummer)) {
+      throw new Error(errorMessages.unknownFinanzamtError);
     }
 
     // validate that the Steuernummer does not use an explicitly forbidden
     // Bezirksnummer:
-    const bezirksnummer = getBezirksnummer(normalizedDigits);
     if (forbiddenBezirksnummer.includes(bezirksnummer)) {
-      return errorMsgs.bezirksnummerError;
+      throw new Error(errorMessages.bezirksnummerError);
     }
 
     // validate that the Bezirksnummer does not violate constraints for states of
@@ -216,27 +171,26 @@ export function validateSteuernummer(val: string, options?: Options) {
     const isBayerischerProgrammierVerbund =
       getIsBayerischerProgrammierverbund(states);
     if (isBayerischerProgrammierVerbund && parseInt(bezirksnummer) < 100) {
-      return errorMsgs.bezirksnummerError;
+      throw new Error(errorMessages.bezirksnummerError);
     }
 
     // validate that the "Kombination aus Unterscheidungsnummer und Prüfziffer
-    // (UUUP) stets größer als 0009" for a Steuernummer from Nordrhein-Westfalen:
+    // (UUUP) stets größer als 0009" for a Steuernummer from
+    // Nordrhein-Westfalen:
     if (
       states.includes('DE-NW') &&
-      parseInt(normalizedDigits.substring(normalizedDigits.length - 4)) < 9
+      parseInt(unterscheidungsnummer + pruefziffer) < 9
     ) {
-      return errorMsgs.nwInternalConsistencyError;
+      throw new Error(errorMessages.nwInternalConsistencyError);
     }
 
     // validate the Prüfziffer:
-    const pruefziffern = getPruefziffern(normalizedDigits, states);
+    const pruefziffern = getPruefziffern(normalizedSteuernummer, states);
     if (
       pruefziffern.length > 0 &&
-      !pruefziffern.includes(
-        parseInt(normalizedDigits.charAt(normalizedDigits.length - 1))
-      )
+      !pruefziffern.includes(parseInt(pruefziffer))
     ) {
-      return errorMsgs.pruefzifferError;
+      throw new Error(errorMessages.pruefzifferError);
     }
 
     return undefined;
@@ -267,75 +221,282 @@ const statesWith11Digits = new Set<ISO3166_2Codes>([
   'DE-TH',
 ]);
 
+export type ParsedSteuernummer = {
+  // Steuernummer w. 13 digits: `FFFF 0 BBB UUUU P` or `FFFF 0 BBBB UUU P`
+  normalizedSteuernummer: string;
+  states: ISO3166_2Codes | ISO3166_2Codes[];
+  statePrefix: string;
+  bundesfinanzamtnummer: string;
+  bezirksnummer: string;
+  unterscheidungsnummer: string;
+  pruefziffer: string;
+};
+
 /**
- * Returns a normalized version of the given Steuernummer, i.e., one following
- * the "Vereinheitlichtes Bundesschema zur elektronischen Übermittlung". It's
- * length will be 13. Requires information about the state issuing the
- * Steuernummer being provided, either as a state prefix in the given `digits`,
- * or via an entry in the given `states`.
+ * Parses the steuernummer contained in the given `value`, or throws an error if
+ * parsing is not possible. `value` could contain a steuernummer in the:
+ *  - "Standardschema der Länder"
+ *  - "Vereinheitlichtes Bundesschema"
+ *  - "Vereinheitlichtes Bundesschema zur elektronischen Übermittlung"
  */
-function getNormalizedDigits(
-  digits: string,
-  states: ISO3166_2Codes[],
-  errors: ErrorMessages
-) {
-  // nothing to do for already normalized Steuernummern:
+export function parseSteuernummer(
+  value: string,
+  options: OptionsWithErrors
+): ParsedSteuernummer {
+  const { errorMessages } = options;
+
+  // check whether only allowed characters are used:
+  if (!/^[0-9\/\s]*$/gm.test(value)) {
+    throw new Error(errorMessages.allowedCharactersError);
+  }
+
+  // extract digits:
+  const digits = value.replace(/[^0-9]/gi, '');
+
+  // validate length:
+  if (digits.length < 10) {
+    throw new Error(errorMessages.tooShortError);
+  }
+  if (digits.length > 13) {
+    throw new Error(errorMessages.tooLongError);
+  }
+
+  // parse depending on what schema the Steuernummer is (most likely) in:
   if (digits.length === 13) {
-    return digits;
+    return parseSteuernummerBundesschemaElectric(digits, options);
+  } else if (digits.length === 12) {
+    return parseSteuernummerBundesschema(digits, options);
+  } else {
+    return parseSteuernummerStandardschema(digits, options);
   }
+}
 
-  // only add a `0` at the 5th place:
-  if (digits.length === 12) {
-    return `${digits.substring(0, 4)}0${digits.substring(4, 12)}`;
-  }
+/**
+ * Parses the given `digits` with length 13, which represent a steuernummer in
+ * the "Vereinheitlichtes Bundesschema zur elektronischen Übermittlung".
+ */
+function parseSteuernummerBundesschemaElectric(
+  digits: string,
+  options: OptionsWithErrors
+): ParsedSteuernummer {
+  // determine the possible Bundesländer that issued this Steuernummer:
+  const states = getStates(digits);
 
+  // validate that a given `bundesland` matches the state(s) identified by the
+  // given digits:
   if (
-    digits.length !== 10 &&
-    states.every((state) => statesWith10Digits.has(state))
+    typeof options?.bundesland !== 'undefined' &&
+    !states.includes(options.bundesland)
   ) {
-    throw new Error(errors.wrongLengthForState);
+    throw new Error(options.errorMessages.wrongStateError);
   }
 
+  // validate that the fifth digit is a `0`:
+  if (digits.charAt(4) !== '0') {
+    throw new Error(options.errorMessages.missingZeroError);
+  }
+
+  const matches = digits.match(
+    states.includes('DE-NW')
+      ? // Format: FFFF 0 BBBB UUU P:
+        /(?<bundesfinanzamtnummer>\d{4})(?<z>0)(?<bezirksnummer>\d{4})(?<unterscheidungsnummer>\d{3})(?<pruefziffer>\d{1})/
+      : // Format: FFFF 0 BBB UUUU P:
+        /(?<bundesfinanzamtnummer>\d{4})(?<z>0)(?<bezirksnummer>\d{3})(?<unterscheidungsnummer>\d{4})(?<pruefziffer>\d{1})/
+  );
+  if (!matches || !matches.groups) {
+    throw new Error(options.errorMessages.parseError);
+  }
+  const {
+    bundesfinanzamtnummer,
+    bezirksnummer,
+    unterscheidungsnummer,
+    pruefziffer,
+  } = matches.groups;
+  return {
+    bezirksnummer,
+    bundesfinanzamtnummer,
+    states: options.bundesland
+      ? options.bundesland
+      : states.length === 1
+      ? states[0]
+      : states,
+    statePrefix: getStatesPrefix(states, options.errorMessages),
+    normalizedSteuernummer: digits,
+    pruefziffer,
+    unterscheidungsnummer,
+  };
+}
+
+/**
+ * Parses the given `digits` with length 12, which represent a steuernummer in
+ * the "Vereinheitlichtes Bundesschema".
+ */
+function parseSteuernummerBundesschema(
+  digits: string,
+  options: OptionsWithErrors
+): ParsedSteuernummer {
+  // determine the possible Bundesländer that issued this Steuernummer:
+  const states = getStates(digits);
+
+  // validate that a given `bundesland` matches the state(s) identified by the
+  // given digits:
   if (
-    digits.length !== 11 &&
-    states.every((state) => statesWith11Digits.has(state))
+    typeof options?.bundesland !== 'undefined' &&
+    !states.includes(options.bundesland)
   ) {
-    throw new Error(errors.wrongLengthForState);
+    throw new Error(options.errorMessages.wrongStateError);
   }
 
-  // Compilation based on https://github.com/kontist/normalize-steuernummer:
-  const { ff, fff, bbb, bbbb, uuu, uuuu, p } = parse(digits, states, errors);
+  const matches = digits.match(
+    states.includes('DE-NW')
+      ? // Format: FFFF BBBB UUU P:
+        /(?<bundesfinanzamtnummer>\d{4})(?<bezirksnummer>\d{4})(?<unterscheidungsnummer>\d{3})(?<pruefziffer>\d{1})/
+      : // Format: FFFF BBB UUUU P:
+        /(?<bundesfinanzamtnummer>\d{4})(?<bezirksnummer>\d{3})(?<unterscheidungsnummer>\d{4})(?<pruefziffer>\d{1})/
+  );
+  if (!matches || !matches.groups) {
+    throw new Error(options.errorMessages.parseError);
+  }
+  const {
+    bundesfinanzamtnummer,
+    bezirksnummer,
+    unterscheidungsnummer,
+    pruefziffer,
+  } = matches.groups;
+  return {
+    bezirksnummer,
+    bundesfinanzamtnummer,
+    states: options.bundesland
+      ? options.bundesland
+      : states.length === 1
+      ? states[0]
+      : states,
+    statePrefix: getStatesPrefix(states, options.errorMessages),
+    normalizedSteuernummer:
+      digits.substring(0, 4) + '0' + digits.substring(4, 12),
+    pruefziffer,
+    unterscheidungsnummer,
+  };
+}
 
-  switch (states[0]) {
+/**
+ * Parses the given `digits` with length 10 or 11, which represent a
+ * steuernummer in the "Standardschema der Länder". Requires a valid
+ * `bundesland` option to be passed as well.
+ */
+function parseSteuernummerStandardschema(
+  digits: string,
+  options: OptionsWithErrors
+): ParsedSteuernummer {
+  const bundesland = options?.bundesland;
+  if (typeof bundesland === 'undefined') {
+    throw new Error(options.errorMessages.missingStateInformationError);
+  }
+
+  if (digits.length !== 10 && statesWith10Digits.has(bundesland)) {
+    throw new Error(options.errorMessages.wrongLengthForState);
+  }
+
+  if (digits.length !== 11 && statesWith11Digits.has(bundesland)) {
+    throw new Error(options.errorMessages.wrongLengthForState);
+  }
+
+  // Parsing based on https://github.com/kontist/normalize-steuernummer
+  switch (bundesland) {
     case 'DE-BW':
-      return `28${ff}0${bbb}${uuuu}${p}`;
-    case 'DE-BY':
-      return `9${fff}0${bbb}${uuuu}${p}`;
     case 'DE-BE':
-      return `11${ff}0${bbb}${uuuu}${p}`;
+    case 'DE-HB':
+    case 'DE-HH':
+    case 'DE-NI':
+    case 'DE-RP':
+    case 'DE-SH': {
+      // Format: FF/BBB/UUUUP.
+      const matches = digits.match(
+        /(?<ff>\d{2})(?<bbb>\d{3})(?<uuuu>\d{4})(?<p>\d{1})/
+      );
+      if (!matches || !matches.groups) {
+        throw new Error(options.errorMessages.parseError);
+      }
+      const { ff, bbb, uuuu, p } = matches.groups;
+      const statePrefix = getStatesPrefix([bundesland], options.errorMessages);
+      return {
+        bezirksnummer: bbb,
+        bundesfinanzamtnummer: statePrefix + ff,
+        normalizedSteuernummer: `${statePrefix}${ff}0${bbb}${uuuu}${p}`,
+        unterscheidungsnummer: uuuu,
+        pruefziffer: p,
+        statePrefix,
+        states: bundesland,
+      };
+    }
+    case 'DE-BY':
     case 'DE-BB':
+    case 'DE-MV':
+    case 'DE-SL':
     case 'DE-SN':
     case 'DE-ST':
-      return `3${fff}0${bbb}${uuuu}${p}`;
-    case 'DE-HB':
-      return `24${ff}0${bbb}${uuuu}${p}`;
-    case 'DE-HH':
-      return `22${ff}0${bbb}${uuuu}${p}`;
-    case 'DE-HE':
-      return `26${ff}0${bbb}${uuuu}${p}`;
-    case 'DE-MV':
-    case 'DE-TH':
-      return `4${fff}0${bbb}${uuuu}${p}`;
-    case 'DE-NI':
-      return `23${ff}0${bbb}${uuuu}${p}`;
-    case 'DE-NW':
-      return `5${fff}0${bbbb}${uuu}${p}`;
-    case 'DE-RP':
-      return `27${ff}0${bbb}${uuuu}${p}`;
-    case 'DE-SL':
-      return `1${fff}0${bbb}${uuuu}${p}`;
-    case 'DE-SH':
-      return `21${ff}0${bbb}${uuuu}${p}`;
+    case 'DE-TH': {
+      // Format: FFF/BBB/UUUUP.
+      const matches = digits.match(
+        /(?<fff>\d{3})(?<bbb>\d{3})(?<uuuu>\d{4})(?<p>\d{1})/
+      );
+      if (!matches || !matches.groups) {
+        throw new Error(options.errorMessages.parseError);
+      }
+      const { fff, bbb, uuuu, p } = matches.groups;
+      const statePrefix = getStatesPrefix([bundesland], options.errorMessages);
+      return {
+        bezirksnummer: bbb,
+        bundesfinanzamtnummer: statePrefix + fff,
+        normalizedSteuernummer: `${statePrefix}${fff}0${bbb}${uuuu}${p}`,
+        unterscheidungsnummer: uuuu,
+        pruefziffer: p,
+        statePrefix,
+        states: bundesland,
+      };
+    }
+    case 'DE-HE': {
+      // Format: 0FF/BBB/UUUUP.
+      const matches = digits.match(
+        /0(?<ff>\d{2})(?<bbb>\d{3})(?<uuuu>\d{4})(?<p>\d{1})/
+      );
+      if (!matches || !matches.groups) {
+        throw new Error(options.errorMessages.parseError);
+      }
+      const { ff, bbb, uuuu, p } = matches.groups;
+      const statePrefix = getStatesPrefix([bundesland], options.errorMessages);
+      return {
+        bezirksnummer: bbb,
+        bundesfinanzamtnummer: statePrefix + ff,
+        normalizedSteuernummer: `${statePrefix}${ff}0${bbb}${uuuu}${p}`,
+        unterscheidungsnummer: uuuu,
+        pruefziffer: p,
+        statePrefix,
+        states: bundesland,
+      };
+    }
+    case 'DE-NW': {
+      // Format: FFF/BBBB/UUUP.
+      const matches = digits.match(
+        /(?<fff>\d{3})(?<bbbb>\d{4})(?<uuu>\d{3})(?<p>\d{1})/
+      );
+      if (!matches || !matches.groups) {
+        throw new Error(options.errorMessages.parseError);
+      }
+      const { fff, bbbb, uuu, p } = matches.groups;
+      const statePrefix = getStatesPrefix([bundesland], options.errorMessages);
+      return {
+        bezirksnummer: bbbb,
+        bundesfinanzamtnummer: statePrefix + fff,
+        normalizedSteuernummer: `${statePrefix}${fff}0${bbbb}${uuu}${p}`,
+        unterscheidungsnummer: uuu,
+        pruefziffer: p,
+        statePrefix,
+        states: bundesland,
+      };
+    }
+    default:
+      throw new Error('Das angegebene bundesland ist ungültig');
   }
 }
 
@@ -383,30 +544,63 @@ function getStates(digits: string): ISO3166_2Codes[] {
 }
 
 /**
- * Returns `true`, if any of the given `states` entries is one belonging to the
- * "bayerischer Programmierverband".
+ * Returns the numeric prefix used in federal Steuernummern to identify a
+ * states (Bundesland) for the given `states`.
  */
-function getIsBayerischerProgrammierverbund(states: ISO3166_2Codes[]) {
-  return (
-    states.includes('DE-BY') ||
+function getStatesPrefix(
+  states: ISO3166_2Codes[],
+  errorMessages: ErrorMessages
+) {
+  if (states.includes('DE-BW')) {
+    return '28';
+  } else if (states.includes('DE-BY')) {
+    return '9';
+  } else if (states.includes('DE-BE')) {
+    return '11';
+  } else if (
     states.includes('DE-BB') ||
-    states.includes('DE-MV') ||
-    states.includes('DE-SL') ||
     states.includes('DE-SN') ||
-    states.includes('DE-ST') ||
-    states.includes('DE-TH')
-  );
+    states.includes('DE-ST')
+  ) {
+    return '3';
+  } else if (states.includes('DE-HB')) {
+    return '24';
+  } else if (states.includes('DE-HH')) {
+    return '22';
+  } else if (states.includes('DE-HE')) {
+    return '26';
+  } else if (states.includes('DE-MV') || states.includes('DE-TH')) {
+    return '4';
+  } else if (states.includes('DE-NI')) {
+    return '23';
+  } else if (states.includes('DE-NW')) {
+    return '5';
+  } else if (states.includes('DE-RP')) {
+    return '27';
+  } else if (states.includes('DE-SL')) {
+    return '1';
+  } else if (states.includes('DE-SH')) {
+    return '21';
+  }
+  throw new Error(errorMessages.unknownStatePrefixError);
 }
 
 /**
- * Returns the Bezirksnummer part of the given `normalizedDigits`.
- * The Bezirksnummer is only 4 digits long, if the state issuing the
- * Steuernummer is Nordrhein-Westfalen.
+ * Returns `true`, if any of the given `states` entries is one belonging to the
+ * "bayerischer Programmierverband".
  */
-function getBezirksnummer(normalizedDigits: string) {
-  return normalizedDigits.substring(
-    normalizedDigits.length - 8,
-    normalizedDigits.length - 8 + (normalizedDigits.startsWith('5') ? 4 : 3)
+function getIsBayerischerProgrammierverbund(
+  states: ISO3166_2Codes | ISO3166_2Codes[]
+) {
+  const statesToCheck = Array.isArray(states) ? states : [states];
+  return (
+    statesToCheck.includes('DE-BY') ||
+    statesToCheck.includes('DE-BB') ||
+    statesToCheck.includes('DE-MV') ||
+    statesToCheck.includes('DE-SL') ||
+    statesToCheck.includes('DE-SN') ||
+    statesToCheck.includes('DE-ST') ||
+    statesToCheck.includes('DE-TH')
   );
 }
 
@@ -427,8 +621,9 @@ function getBezirksnummer(normalizedDigits: string) {
  */
 function getPruefziffern(
   normalizedDigits: string,
-  states: ISO3166_2Codes[]
+  states: ISO3166_2Codes | ISO3166_2Codes[]
 ): number[] {
+  const statesToCheck = Array.isArray(states) ? states : [states];
   // w.o. knowing the Bundesland, we cannot determine the Prüfziffer:
   if (normalizedDigits.length !== 13 || states.length === 0) {
     throw new Error(
@@ -436,15 +631,15 @@ function getPruefziffern(
     );
   }
 
-  if (states.includes('DE-RP')) {
+  if (statesToCheck.includes('DE-RP')) {
     return [getPruefzifferModified11er(normalizedDigits)];
   } else if (
-    states.includes('DE-BW') ||
-    states.includes('DE-HE') ||
-    states.includes('DE-SH')
+    statesToCheck.includes('DE-BW') ||
+    statesToCheck.includes('DE-HE') ||
+    statesToCheck.includes('DE-SH')
   ) {
     return [getPruefziffer2er(normalizedDigits)];
-  } else if (states.includes('DE-BE')) {
+  } else if (statesToCheck.includes('DE-BE')) {
     return [
       getPruefziffer11er(normalizedDigits, 'DE-BE-A'),
       getPruefziffer11er(normalizedDigits, 'DE-BE-B'),
@@ -453,7 +648,7 @@ function getPruefziffern(
     return [
       getPruefziffer11er(
         normalizedDigits,
-        states[0] as ISO3166_2Codes_11erVerfahren
+        statesToCheck[0] as ISO3166_2Codes_11erVerfahren
       ),
     ];
   }
@@ -538,70 +733,4 @@ function sumDigits(num: number): number {
     num = Math.floor(num / 10);
   }
   return sum;
-}
-
-/**
- * Parses the given `digits` (with length 10 or 11) depending on the given
- * `states`.
- *
- * Based on https://github.com/kontist/normalize-steuernummer
- */
-function parse(
-  digits: string,
-  states: ISO3166_2Codes[],
-  errors: ErrorMessages
-) {
-  if (
-    states.includes('DE-BW') ||
-    states.includes('DE-BE') ||
-    states.includes('DE-HB') ||
-    states.includes('DE-HH') ||
-    states.includes('DE-NI') ||
-    states.includes('DE-RP') ||
-    states.includes('DE-SH')
-  ) {
-    // Format: FF/BBB/UUUUP
-    const matches = digits.match(
-      /(?<ff>\d{2})(?<bbb>\d{3})(?<uuuu>\d{4})(?<p>\d{1})/
-    );
-    if (!matches || !matches.groups) {
-      throw new Error(errors.parseError);
-    }
-    return matches.groups;
-  } else if (
-    states.includes('DE-BY') ||
-    states.includes('DE-BB') ||
-    states.includes('DE-MV') ||
-    states.includes('DE-SL') ||
-    states.includes('DE-SN') ||
-    states.includes('DE-ST') ||
-    states.includes('DE-TH')
-  ) {
-    // Format: FFF/BBB/UUUUP.
-    const matches = digits.match(
-      /(?<fff>\d{3})(?<bbb>\d{3})(?<uuuu>\d{4})(?<p>\d{1})/
-    );
-    if (!matches || !matches.groups) {
-      throw new Error(errors.parseError);
-    }
-    return matches.groups;
-  } else if (states.includes('DE-HE')) {
-    // Format: 0FF/BBB/UUUUP.
-    const matches = digits.match(
-      /0(?<ff>\d{2})(?<bbb>\d{3})(?<uuuu>\d{4})(?<p>\d{1})/
-    );
-    if (!matches || !matches.groups) {
-      throw new Error(errors.parseError);
-    }
-    return matches.groups;
-  } else if (states.includes('DE-NW')) {
-    const matches = digits.match(
-      /(?<fff>\d{3})(?<bbbb>\d{4})(?<uuu>\d{3})(?<p>\d{1})/
-    );
-    if (!matches || !matches.groups) {
-      throw new Error(errors.parseError);
-    }
-    return matches.groups;
-  }
-  throw new Error(errors.parseError);
 }

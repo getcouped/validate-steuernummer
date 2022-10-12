@@ -70,8 +70,6 @@ For details about the validation requirements for Steuernummern, refer to [this 
         'Please only use digits, spaces, dashes, underscores, or slashes'
     }});
     ```
-* `lax`: If `true`, validation will ignore state-specific checks _if the state issuing the given Steuernummer cannot be determined_ (i.e., if the Steuernummer does not include a state prefix, and the `bundesland` option was not used). In this case, validation will only check that the given string contains only valid characters, and that it contains a valid number of digits. Defaults to `false`.
-
 
 ## Related libraries
 * [kontist/normalize-steuernummer](https://github.com/kontist/normalize-steuernummer) for translating Steuernummern in the "Standardschema der Länder" or "Vereinheitlichtes Bundesschema" into the normalized "Vereinheitlichtes Bundesschema zur elektronischen Übermittlung"

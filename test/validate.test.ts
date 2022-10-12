@@ -91,12 +91,8 @@ describe('validate a Steuernummer', () => {
   });
 
   it('no error on valid Steuernummer', () => {
-    expect(validateSteuernummer('9381508152', { lax: true })).toBeUndefined();
     expect(validateSteuernummer('918181508155')).toBeUndefined();
     expect(validateSteuernummer('5133081508159')).toBeUndefined();
-    expect(
-      validateSteuernummer('93 815 0815 2', { lax: true })
-    ).toBeUndefined();
     expect(validateSteuernummer('9 / 181 / 815 / 0815 / 5')).toBeUndefined();
     expect(validateSteuernummer('5 133 0 8150 815 9')).toBeUndefined();
     expect(
