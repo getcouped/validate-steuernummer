@@ -496,7 +496,7 @@ function parseSteuernummerStandardschema(
       };
     }
     default:
-      throw new Error('Das angegebene bundesland ist ungültig');
+      throw new Error('Das angegebene Bundesland ist ungültig');
   }
 }
 
