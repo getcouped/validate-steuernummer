@@ -14,7 +14,7 @@ yarn add validate-steuernummer
 ```
 
 
-## Usage
+## Usage: Validation
 
 ```typescript
 import { validateSteuernummer } from 'validate-steuernummer'
@@ -35,12 +35,38 @@ const err3 = validateSteuernummer('24/815/08151', { bundesland: 'DE-NI' });
 // err3 is `undefined`, because this is a valid Steuernummer from Niedersachsen
 ```
 
-This library exposes a single `validateSteuernummer` function that takes one or two arguments:
+This library exposes a `validateSteuernummer` function that takes one or two arguments:
 
 1. A string `value` containing (possibly) a German Steuernummer
 2. _Optionally_: an [options](#options) object
 
 The function returns `undefined` if it deems the given `value` to be a valid Steuernummer, or an error string denoting why not.
+
+
+## Usage: Parsing
+
+```typescript
+import { validateSteuernummer } from 'validate-steuernummer'
+
+const {
+  bezirksnummer, // '815',
+  bundesfinanzamtnummer, // '2653',
+  normalizedSteuernummer, // '2653081508158',
+  pruefziffer, // '8',
+  statePrefix, // '26',
+  states, // 'DE-HE',
+  unterscheidungsnummer, // '0815',
+} = parseSteuernummer('053 815 08158', {
+  bundesland: 'DE-HE',
+});
+```
+
+This library exposes a `parseSteuernummer` function that takes one or two arguments:
+
+1. A string `value` containing (possibly) a German Steuernummer
+2. _Optionally_: an [options](#options) object
+
+The function throws an error if parsing fails. Note that this function _does not further validate_ the given Steuernummer.
 
 
 ## What's being validated?

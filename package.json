@@ -1,7 +1,7 @@
 {
   "name": "validate-steuernummer",
   "description": "Validation of German Steuernummern",
-  "version": "1.5.1",
+  "version": "1.6.0",
   "main": "./dist/validate-steuernummer.umd.cjs",
   "module": "./dist/validate-steuernummer.js",
   "types": "./dist/index.d.ts",

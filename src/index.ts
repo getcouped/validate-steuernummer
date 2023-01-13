@@ -86,7 +86,7 @@ const factors2erVerfahren = [0, 0, 512, 256, 0, 128, 64, 32, 16, 8, 4, 2];
  */
 const forbiddenBezirksnummer = ['000', '998', '999', '0000', '0998', '0999'];
 
-type Options = {
+export type Options = {
   bundesland?: ISO3166_2Codes;
   errorMessages?: Partial<ErrorMessages>;
 };
@@ -241,13 +241,21 @@ export type ParsedSteuernummer = {
  */
 export function parseSteuernummer(
   value: string,
-  options: OptionsWithErrors
+  options: Options
 ): ParsedSteuernummer {
-  const { errorMessages } = options;
+  const { errorMessages, ...rest } = options;
+  const combinedErrorMessages: ErrorMessages = {
+    ...defaultErrors,
+    ...(options.errorMessages || {}),
+  };
+  const optionsWithErrors: OptionsWithErrors = {
+    ...rest,
+    errorMessages: combinedErrorMessages,
+  };
 
   // check whether only allowed characters are used:
   if (!/^[0-9\/\s]*$/gm.test(value)) {
-    throw new Error(errorMessages.allowedCharactersError);
+    throw new Error(combinedErrorMessages.allowedCharactersError);
   }
 
   // extract digits:
@@ -255,19 +263,19 @@ export function parseSteuernummer(
 
   // validate length:
   if (digits.length < 10) {
-    throw new Error(errorMessages.tooShortError);
+    throw new Error(combinedErrorMessages.tooShortError);
   }
   if (digits.length > 13) {
-    throw new Error(errorMessages.tooLongError);
+    throw new Error(combinedErrorMessages.tooLongError);
   }
 
   // parse depending on what schema the Steuernummer is (most likely) in:
   if (digits.length === 13) {
-    return parseSteuernummerBundesschemaElectric(digits, options);
+    return parseSteuernummerBundesschemaElectric(digits, optionsWithErrors);
   } else if (digits.length === 12) {
-    return parseSteuernummerBundesschema(digits, options);
+    return parseSteuernummerBundesschema(digits, optionsWithErrors);
   } else {
-    return parseSteuernummerStandardschema(digits, options);
+    return parseSteuernummerStandardschema(digits, optionsWithErrors);
   }
 }
 
