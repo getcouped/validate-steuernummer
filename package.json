@@ -37,6 +37,7 @@
   "author": "GetCouped Technologies GmbH",
   "license": "MIT",
   "scripts": {
+    "prepare": "npm run build",
     "build": "tsc && vite build",
     "test": "vitest",
     "release": "npm run build && npm publish"
